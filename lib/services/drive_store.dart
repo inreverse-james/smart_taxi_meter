@@ -7,6 +7,7 @@ class DriveSession {
   final bool surcharge;
   final bool outsideCity;
   final double distance; // 지금까지 주행한 거리(km)
+  final int lowSpeedSeconds;
   final String email;
 
   const DriveSession({
@@ -15,6 +16,7 @@ class DriveSession {
     required this.surcharge,
     required this.outsideCity,
     this.distance = 0.0,
+    this.lowSpeedSeconds = 0,
     required this.email,
   });
 }

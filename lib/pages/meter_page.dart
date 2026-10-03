@@ -12,7 +12,8 @@ import '../widgets/horse_led.dart';
 import 'ride_complete_page.dart';
 import 'settings_page.dart';
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform;
 import 'package:geolocator/geolocator.dart';
 
 class MeterPage extends StatefulWidget {
@@ -279,9 +280,7 @@ class _MeterPageState extends State<MeterPage> {
 
     _positionStream?.cancel();
     _positionStream =
-        Geolocator.getPositionStream(
-          locationSettings: locationSettings,
-        ).listen(
+        Geolocator.getPositionStream(locationSettings: locationSettings).listen(
           _onPosition,
           onError: (Object e) {
             debugPrint('GPS stream error: $e');
@@ -488,54 +487,54 @@ class _MeterPageState extends State<MeterPage> {
         }
       },
       child: Scaffold(
-      appBar: AppBar(
-        title: Text(widget.region),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: _openSettings,
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(15),
-                child: Column(
-                  children: [
-                    _fareDisplay(),
-
-                    const SizedBox(height: 12),
-
-                    HorseLed(running: isDriving, speed: speed),
-
-                    const SizedBox(height: 12),
-
-                    _infoDisplay(),
-
-                    const SizedBox(height: 12),
-
-                    _optionButtons(),
-
-                    const SizedBox(height: 12),
-
-                    _mainButtons(),
-
-                    const SizedBox(height: 12),
-
-                    _fareNoticeBox(),
-                  ],
-                ),
-              ),
+        appBar: AppBar(
+          title: Text(widget.region),
+          centerTitle: true,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              onPressed: _openSettings,
             ),
-
-            const AdBanner(),
           ],
         ),
-      ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(15),
+                  child: Column(
+                    children: [
+                      _fareDisplay(),
+
+                      const SizedBox(height: 12),
+
+                      HorseLed(running: isDriving, speed: speed),
+
+                      const SizedBox(height: 12),
+
+                      _infoDisplay(),
+
+                      const SizedBox(height: 12),
+
+                      _optionButtons(),
+
+                      const SizedBox(height: 12),
+
+                      _mainButtons(),
+
+                      const SizedBox(height: 12),
+
+                      _fareNoticeBox(),
+                    ],
+                  ),
+                ),
+              ),
+
+              const AdBanner(),
+            ],
+          ),
+        ),
       ),
     );
   }
