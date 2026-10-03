@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:gal/gal.dart';
@@ -50,9 +51,8 @@ class _RideCompletePageState extends State<RideCompletePage> {
 
   void _showMessage(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   // 영수증 위젯을 PNG 파일로 캡처
@@ -134,9 +134,7 @@ class _RideCompletePageState extends State<RideCompletePage> {
         return Container(
           decoration: BoxDecoration(
             color: Colors.grey.shade900,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(20),
-            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           child: SafeArea(
             child: Padding(
@@ -144,6 +142,16 @@ class _RideCompletePageState extends State<RideCompletePage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // 시트 닫기 버튼 (우측 상단 X) - 캡처 대상 밖이라 이미지에 포함되지 않음
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      icon: const Icon(Icons.close),
+                      tooltip: '닫기',
+                      onPressed: () => Navigator.pop(sheetContext),
+                    ),
+                  ),
+
                   // 캡처 대상
                   RepaintBoundary(key: _receiptKey, child: _buildReceipt()),
                   const SizedBox(height: 20),
@@ -391,10 +399,7 @@ class _RideCompletePageState extends State<RideCompletePage> {
           Row(
             children: [
               _summaryItem('지역', widget.region),
-              _summaryItem(
-                '거리',
-                '${widget.distance.toStringAsFixed(2)} km',
-              ),
+              _summaryItem('거리', '${widget.distance.toStringAsFixed(2)} km'),
               _summaryItem('시간', formatDuration(widget.duration.inSeconds)),
             ],
           ),

@@ -14,3 +14,9 @@ String formatDuration(int totalSeconds) {
   String two(int n) => n.toString().padLeft(2, '0');
   return '${two(h)}:${two(m)}:${two(s)}';
 }
+
+/// 날짜·시각을 "2026.10.04 15:30" 형태로 바꿉니다.
+String formatDateTime(DateTime t) {
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${t.year}.${two(t.month)}.${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+}

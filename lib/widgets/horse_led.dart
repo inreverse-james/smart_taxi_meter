@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 /// 구형 택시미터에 있던 막대형 LED 주행 표시등을 흉내낸 위젯.
@@ -47,18 +48,26 @@ class _HorseLedState extends State<HorseLed> {
 
     // ============================================================
     // ▼▼▼ LED 이동(깜빡임) 속도 조정 지점 ▼▼▼
-    // baseInterval : 속도 0km/h 일 때 LED가 한 칸 이동하는 시간(ms) - 클수록 느림
-    // minInterval  : 속도가 아무리 빨라도 이보다 짧아지지 않는 최소 이동 시간(ms)
-    // speedFactor  : speed 1km/h 당 interval을 얼마나 줄일지(ms)
-    const int baseInterval = 260;
-    const int minInterval = 55;
-    const int speedFactor = 3;
+    // 실제 속도(km/h)에 비례해서 LED가 흐르는 빠르기를 정합니다.
+    //
+    // ledPerSecPerKmh : 속도 1km/h 당 1초에 LED가 몇 칸 움직일지
+    //                   - 키우면 전체가 빨라지고, 줄이면 전체가 느려집니다.
+    //                   - 예) 0.2 이면 60km/h 에서 초당 12칸 이동
+    // idleInterval    : 정차 중이거나 아주 느릴 때 LED가 한 칸 이동하는 시간(ms)
+    //                   - 클수록 정차 중 LED가 더 느리게 움직입니다.
+    // minInterval     : 아무리 빨라도 이보다 짧아지지 않는 최소 이동 시간(ms)
+    //                   - 너무 작게 하면 깜빡임처럼 보일 수 있습니다.
+    const double ledPerSecPerKmh = 0.2;
+    const int idleInterval = 400;
+    const int minInterval = 30;
     // ▲▲▲ 여기 세 값만 바꾸면 전체 체감 속도가 바뀝니다 ▲▲▲
     // ============================================================
-    final int interval = (baseInterval - widget.speed * speedFactor).clamp(
-      minInterval,
-      baseInterval,
-    );
+    final int interval = widget.speed <= 0
+        ? idleInterval
+        : (1000 / (widget.speed * ledPerSecPerKmh)).round().clamp(
+            minInterval,
+            idleInterval,
+          );
 
     _timer = Timer.periodic(Duration(milliseconds: interval), (_) {
       if (!mounted) return;

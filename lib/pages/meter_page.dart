@@ -4,8 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
-import '../services/auth_store.dart';
 import '../services/drive_store.dart';
+import '../services/fare_calculator.dart';
+import '../services/ride_store.dart';
 import '../utils/formatters.dart';
 import '../widgets/ad_banner.dart';
 import '../widgets/horse_led.dart';
@@ -27,8 +28,8 @@ class MeterPage extends StatefulWidget {
 
 class _MeterPageState extends State<MeterPage> {
   bool isDriving = false;
-  bool surcharge = false;
   bool outsideCity = false;
+  bool premium = false; // 모범택시 요금 적용 여부
 
   double distance = 0.0;
   int fare = 0;
@@ -43,19 +44,18 @@ class _MeterPageState extends State<MeterPage> {
   StreamSubscription<Position>? _positionStream;
   Position? _lastPosition;
 
-  static const int baseFare = 4800;
-
-  // ===== 시간 요금 (서울 중형택시 기준: 저속 주행 시 30초당 100원) =====
-  // 속도가 lowSpeedKmh 미만(정차 포함)인 시간이 쌓이면 요금이 오릅니다.
-  static const int lowSpeedKmh = 15; // 이 속도 미만이면 시간요금 대상
-  static const int timeFareUnitSeconds = 30; // 몇 초마다
-  static const int timeFareUnitWon = 100; // 몇 원씩 올릴지
+  // 요금표(기본요금, 거리/시간요금, 심야·시외 할증)는 services/fare_calculator.dart 에 있습니다.
 
   // GPS가 이 시간(초) 동안 들어오지 않으면 정차 중으로 보고 속도를 0으로 처리
   // (정차 중에는 위치 변화가 없어 GPS 값이 오지 않기 때문)
   static const int staleSeconds = 4;
 
-  int lowSpeedSeconds = 0; // 저속/정지로 보낸 누적 시간(초)
+  // 요금 누적 상태. 중형/모범은 계산 방식이 달라 각각 따로 쌓아 두고, 선택된 쪽의 요금을 보여줍니다.
+  // 거리 단위를 넘을 때마다 "그 순간의 시간대/시외 설정"으로 요금이 쌓입니다.
+  FareState _stdState = FareCalculator.start(TaxiType.standard, DateTime.now());
+  FareState _prmState = FareCalculator.start(TaxiType.premium, DateTime.now());
+
+  TaxiType get _type => premium ? TaxiType.premium : TaxiType.standard;
   DateTime? _lastPositionTime; // GPS를 마지막으로 받은 시각
 
   // 주행 버튼 LED 깜빡임
@@ -170,11 +170,11 @@ class _MeterPageState extends State<MeterPage> {
       DriveSession(
         region: widget.region,
         startTime: start,
-        surcharge: surcharge,
         outsideCity: outsideCity,
+        premium: premium,
         distance: distance,
-        lowSpeedSeconds: lowSpeedSeconds,
-        email: AuthStore.currentEmail,
+        stdState: _stdState,
+        prmState: _prmState,
       ),
     );
   }
@@ -195,10 +195,11 @@ class _MeterPageState extends State<MeterPage> {
     if (session == null) return;
 
     startTime = session.startTime;
-    surcharge = session.surcharge;
     outsideCity = session.outsideCity;
+    premium = session.premium;
     distance = session.distance;
-    lowSpeedSeconds = session.lowSpeedSeconds;
+    _stdState = session.stdState;
+    _prmState = session.prmState;
     elapsedSeconds = DateTime.now().difference(session.startTime).inSeconds;
     isDriving = true;
     _calculateFare();
@@ -219,15 +220,17 @@ class _MeterPageState extends State<MeterPage> {
     _lastPosition = null;
     _lastPositionTime = null;
     _lastSavedAt = null;
-    lowSpeedSeconds = 0;
+    _stdState = FareCalculator.start(TaxiType.standard, startTime!);
+    _prmState = FareCalculator.start(TaxiType.premium, startTime!);
 
     setState(() {
       isDriving = true;
-      fare = baseFare;
+      fare = 0;
       distance = 0.0;
       speed = 0;
       elapsedSeconds = 0;
       drivingLedOn = true;
+      _calculateFare();
     });
 
     _saveSession();
@@ -253,11 +256,30 @@ class _MeterPageState extends State<MeterPage> {
           speed = 0;
         }
 
-        // 저속/정지 시간만큼 시간요금 대상 시간을 쌓고 요금 갱신
-        if (speed < lowSpeedKmh && passed > 0) {
-          lowSpeedSeconds += passed;
-          _calculateFare();
+        // 느리게 가거나 정차한 시간은 거리로 환산해서 요금에 반영 (시간·거리 병산)
+        if (passed > 0) {
+          final now = DateTime.now();
+          if (FareCalculator.isSlow(TaxiType.standard, speed.toDouble())) {
+            FareCalculator.addMeters(
+              TaxiType.standard,
+              _stdState,
+              passed * FareCalculator.slowMetersPerSecond(TaxiType.standard),
+              outsideCity,
+              now,
+            );
+          }
+          if (FareCalculator.isSlow(TaxiType.premium, speed.toDouble())) {
+            FareCalculator.addMeters(
+              TaxiType.premium,
+              _prmState,
+              passed * FareCalculator.slowMetersPerSecond(TaxiType.premium),
+              outsideCity,
+              now,
+            );
+          }
         }
+
+        _calculateFare();
       });
       _saveSessionThrottled();
     });
@@ -273,9 +295,11 @@ class _MeterPageState extends State<MeterPage> {
             showBackgroundLocationIndicator: true,
             allowBackgroundLocationUpdates: true,
           )
-        : const LocationSettings(
+        : AndroidSettings(
             accuracy: LocationAccuracy.high,
             distanceFilter: 2, // 2미터 이상 실제 이동 시 호출
+            // 위치 갱신 간격을 1초로 명시 (정차 판단 기준 staleSeconds=4초보다 짧아야 함)
+            intervalDuration: const Duration(seconds: 1),
           );
 
     _positionStream?.cancel();
@@ -315,6 +339,29 @@ class _MeterPageState extends State<MeterPage> {
         // 정차 중 GPS 오차(노이즈) 필터링: 1m 초과 이동만 반영
         if (movedMeters > 1.0) {
           distance += movedMeters / 1000.0;
+
+          final now = DateTime.now();
+
+          // 중형: 느려도 거리는 계속 반영 (시간·거리 부분 동시병산)
+          FareCalculator.addMeters(
+            TaxiType.standard,
+            _stdState,
+            movedMeters,
+            outsideCity,
+            now,
+          );
+
+          // 모범: 느린 상태에서는 거리 대신 시간만 반영 (시간·거리 상호병산)
+          if (!FareCalculator.isSlow(TaxiType.premium, currentSpeed)) {
+            FareCalculator.addMeters(
+              TaxiType.premium,
+              _prmState,
+              movedMeters,
+              outsideCity,
+              now,
+            );
+          }
+
           _calculateFare();
         }
       }
@@ -342,31 +389,15 @@ class _MeterPageState extends State<MeterPage> {
     }
   }
 
+  // 쌓여 있는 요금 상태에서 현재 요금을 읽어옵니다. (여기서 시간대를 다시 적용하지 않음)
   void _calculateFare() {
-    double calculated = baseFare.toDouble();
-
-    if (distance > 1.6) {
-      calculated += (distance - 1.6) * 1000;
-    }
-
-    // 시간 요금: 저속/정지 시간 30초마다 100원
-    calculated += (lowSpeedSeconds ~/ timeFareUnitSeconds) * timeFareUnitWon;
-
-    if (surcharge) {
-      calculated *= 1.2;
-    }
-
-    if (outsideCity) {
-      calculated *= 1.3;
-    }
-
-    fare = calculated.round();
+    fare = FareCalculator.fare(premium ? _prmState : _stdState);
   }
 
-  void _toggleSurcharge() {
+  void _togglePremium() {
     setState(() {
-      surcharge = !surcharge;
-      _calculateFare();
+      premium = !premium;
+      if (isDriving) _calculateFare();
     });
     _saveSession();
   }
@@ -418,6 +449,11 @@ class _MeterPageState extends State<MeterPage> {
     _positionStream = null;
     _lastPosition = null;
 
+    // 완료된 주행을 기록에 저장 (최근 10개만 유지)
+    await RideStore.add(
+      RideRecord(date: DateTime.now(), distance: distance, fare: fare),
+    );
+
     // 저장된 주행 정보 삭제
     await DriveStore.clear();
 
@@ -449,10 +485,11 @@ class _MeterPageState extends State<MeterPage> {
         fare = 0;
         speed = 0;
         elapsedSeconds = 0;
-        lowSpeedSeconds = 0;
+        _stdState = FareCalculator.start(TaxiType.standard, DateTime.now());
+        _prmState = FareCalculator.start(TaxiType.premium, DateTime.now());
         startTime = null;
-        surcharge = false;
         outsideCity = false;
+        premium = false;
         drivingLedOn = true;
       });
     }
@@ -522,10 +559,6 @@ class _MeterPageState extends State<MeterPage> {
                       const SizedBox(height: 12),
 
                       _mainButtons(),
-
-                      const SizedBox(height: 12),
-
-                      _fareNoticeBox(),
                     ],
                   ),
                 ),
@@ -540,6 +573,12 @@ class _MeterPageState extends State<MeterPage> {
   }
 
   Widget _fareDisplay() {
+    // 지금 시각에 따른 심야 할증을 자동으로 표시 (주행 중일 때만)
+    final double night = isDriving
+        ? FareCalculator.nightRate(_type, DateTime.now())
+        : 0.0;
+    final String nightLabel = '심야 ${(night * 100).round()}%';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 15),
@@ -559,31 +598,42 @@ class _MeterPageState extends State<MeterPage> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               SizedBox(
-                width: 62,
-                height: 52,
+                width: 88,
+                //height: 76,
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  //mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _statusSlot('할증', Colors.orange, surcharge),
-                    const SizedBox(height: 4),
+                    // 모범택시를 켜면 표시
+                    _statusSlot('모범', Colors.lightBlueAccent, premium),
+                    const SizedBox(height: 6),
+                    // 시간대에 따라 자동: 심야 20% 또는 심야 40%
+                    _statusSlot(nightLabel, Colors.orange, night > 0),
+                    const SizedBox(height: 6),
                     _statusSlot('시외', Colors.redAccent, outsideCity),
                   ],
                 ),
               ),
               Expanded(
-                child: Center(
-                  child: Text(
-                    '₩${formatNumber(fare)}',
-                    style: const TextStyle(
-                      fontSize: 38,
-                      color: Colors.greenAccent,
-                      fontWeight: FontWeight.bold,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '₩${formatNumber(fare)}',
+                      style: const TextStyle(
+                        fontSize: 38,
+                        color: Colors.greenAccent,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'monospace',
+                        letterSpacing: 1.2,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                      maxLines: 1,
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 62),
             ],
           ),
         ],
@@ -619,17 +669,18 @@ class _MeterPageState extends State<MeterPage> {
       children: [
         Expanded(
           child: _fareOptionButton(
-            title: '할증',
-            active: surcharge,
-            onPressed: isDriving ? _toggleSurcharge : null,
+            title: '시외',
+            active: outsideCity,
+            onPressed: isDriving ? _toggleOutsideCity : null,
           ),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: _fareOptionButton(
-            title: '시외',
-            active: outsideCity,
-            onPressed: isDriving ? _toggleOutsideCity : null,
+            title: '모범',
+            active: premium,
+            // 모범택시 여부는 탑승 전에도 고를 수 있음
+            onPressed: _togglePremium,
           ),
         ),
       ],
@@ -884,47 +935,4 @@ class _MeterPageState extends State<MeterPage> {
       ),
     );
   }
-}
-
-Widget _fareNoticeBox() {
-  return Container(
-    width: double.infinity,
-    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-    decoration: BoxDecoration(
-      color: Colors.grey.shade900.withValues(alpha: 0.6),
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: Colors.grey.shade800),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.info_outline, size: 14, color: Colors.grey.shade500),
-            const SizedBox(width: 5),
-            Text(
-              '요금 적용 기준 안내',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade400,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          '• 기본요금 4,800원(1.6km) 이후 km당 1,000원으로 계산합니다.\n'
-          '• 시속 15km 미만(정차 포함)일 때 30초당 100원이 가산됩니다.\n'
-          '• 할증(20%), 시외(30%)가 가산됩니다.\n'
-          '• 실제 택시미터기 요금과 다를 수 있습니다.',
-          style: TextStyle(
-            fontSize: 11,
-            height: 1.4,
-            color: Colors.grey.shade600,
-          ),
-        ),
-      ],
-    ),
-  );
 }
