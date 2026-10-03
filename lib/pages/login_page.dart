@@ -5,14 +5,12 @@ import '../widgets/ad_banner.dart';
 import 'location_page.dart';
 
 class LoginPage extends StatelessWidget {
-  LoginPage({super.key});
-
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  const LoginPage({super.key});
 
   Future<void> _signInWithGoogle(BuildContext context) async {
     try {
-      final account = await _googleSignIn.signIn();
-      if (account == null) return; // 사용자가 로그인을 취소함
+      // v7 최신 API: GoogleSignIn.instance.authenticate() 사용
+      final account = await GoogleSignIn.instance.authenticate();
 
       AuthStore.currentEmail = account.email;
 
@@ -22,13 +20,22 @@ class LoginPage extends StatelessWidget {
           MaterialPageRoute(builder: (_) => const LocationPage()),
         );
       }
+    } on GoogleSignInException catch (e) {
+      // 사용자가 로그인 창을 닫은 경우에는 아무 메시지도 띄우지 않음
+      if (e.code == GoogleSignInExceptionCode.canceled) return;
+      debugPrint('구글 로그인 실패: $e');
+      if (context.mounted) _showLoginError(context);
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('구글 로그인 실패: $e')));
-      }
+      debugPrint('구글 로그인 실패: $e');
+      if (context.mounted) _showLoginError(context);
     }
+  }
+
+  // 자세한 오류는 호출하는 곳에서 개발 로그에만 남기고, 사용자에게는 짧은 안내만 보여줌
+  void _showLoginError(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('구글 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.')),
+    );
   }
 
   void _continueAsGuest(BuildContext context) {

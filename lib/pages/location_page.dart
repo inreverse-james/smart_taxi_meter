@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import '../widgets/ad_banner.dart';
 import 'meter_page.dart';
 
@@ -10,27 +12,106 @@ class LocationPage extends StatefulWidget {
 }
 
 class _LocationPageState extends State<LocationPage> {
-  String selectedRegion = '인천';
+  String selectedRegion = '서울';
 
   final List<String> regions = [
     '서울',
-    '인천',
-    '부산',
-    '대구',
-    '광주',
-    '대전',
-    '울산',
-    '세종',
-    '경기',
-    '강원',
-    '충북',
-    '충남',
-    '전북',
-    '전남',
-    '경북',
-    '경남',
-    '제주',
+    '경기도',
+    '충청도',
+    '경상도',
+    '전라도',
+    '강원도',
+    '제주도',
   ];
+
+  bool _locating = false;
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  // 시/도 이름(예: '서울특별시', '충청북도')을 앱의 7개 지역으로 변환
+  String? _regionFromAdminArea(String? area) {
+    if (area == null) return null;
+
+    const Map<String, String> prefixToRegion = {
+      '서울': '서울',
+      '경기': '경기도',
+      '인천': '경기도',
+      '대전': '충청도',
+      '세종': '충청도',
+      '충청': '충청도',
+      '부산': '경상도',
+      '대구': '경상도',
+      '울산': '경상도',
+      '경상': '경상도',
+      '광주': '전라도',
+      '전라': '전라도',
+      '전북': '전라도',
+      '강원': '강원도',
+      '제주': '제주도',
+    };
+
+    for (final entry in prefixToRegion.entries) {
+      if (area.startsWith(entry.key)) return entry.value;
+    }
+    return null;
+  }
+
+  // GPS로 현재 지역 확인
+  Future<void> _detectRegion() async {
+    if (_locating) return;
+    setState(() => _locating = true);
+
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        _showMessage('스마트폰의 위치(GPS) 기능을 켜주세요.');
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _showMessage('위치 권한이 필요합니다. 지역을 직접 선택해주세요.');
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+
+      // geocoding 5.0.0 방식: Geocoding 객체를 만들어 사용하고, 한국어 주소로 받기 위해 locale을 직접 전달
+      final placemarks = await Geocoding().placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+        locale: const Locale('ko', 'KR'),
+      );
+
+      final region = placemarks.isEmpty
+          ? null
+          : _regionFromAdminArea(placemarks.first.administrativeArea);
+
+      if (region == null) {
+        _showMessage('현재 지역을 확인할 수 없습니다. 직접 선택해주세요.');
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() => selectedRegion = region);
+    } catch (e) {
+      debugPrint('지역 확인 실패: $e');
+      _showMessage('현재 지역을 확인하지 못했습니다. 직접 선택해주세요.');
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
 
   void _startMeter() {
     Navigator.pushReplacement(
@@ -82,17 +163,11 @@ class _LocationPageState extends State<LocationPage> {
                       width: double.infinity,
                       height: 55,
                       child: ElevatedButton.icon(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('GPS 기능은 다음 단계에서 연결합니다.'),
-                            ),
-                          );
-                        },
+                        onPressed: _locating ? null : _detectRegion,
                         icon: const Icon(Icons.gps_fixed),
-                        label: const Text(
-                          'GPS로 현재 지역 확인',
-                          style: TextStyle(fontSize: 16),
+                        label: Text(
+                          _locating ? '확인 중...' : 'GPS로 현재 지역 확인',
+                          style: const TextStyle(fontSize: 16),
                         ),
                       ),
                     ),
@@ -100,6 +175,7 @@ class _LocationPageState extends State<LocationPage> {
                     const SizedBox(height: 20),
 
                     DropdownButtonFormField<String>(
+                      key: ValueKey(selectedRegion),
                       initialValue: selectedRegion,
                       decoration: const InputDecoration(
                         labelText: '지역 직접 선택',

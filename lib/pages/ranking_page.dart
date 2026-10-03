@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+
 class RankingPage extends StatefulWidget {
   const RankingPage({super.key});
 
@@ -13,13 +14,12 @@ class _RankingPageState extends State<RankingPage> {
   final List<String> regions = [
     '전체',
     '서울',
-    '경기',
-    '인천',
-    '부산',
-    '대구',
-    '광주',
-    '대전',
-    '울산'
+    '경기도',
+    '충청도',
+    '전라도',
+    '경상도',
+    '강원도',
+    '제주도',
   ];
 
   @override
