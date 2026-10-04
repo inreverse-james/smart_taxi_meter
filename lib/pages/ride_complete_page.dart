@@ -226,7 +226,7 @@ class _RideCompletePageState extends State<RideCompletePage> {
           children: [
             const Center(
               child: Text(
-                '영 수 증 (고객용)',
+                '영 수 증 (예상요금)',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,

@@ -26,7 +26,7 @@ class SmartTaxiMeterApp extends StatelessWidget {
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: '택시미터앱',
+      title: 'smart taxi meter',
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: Colors.black,

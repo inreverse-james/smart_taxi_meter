@@ -46,6 +46,14 @@ dependencies:
   share_plus: ^13.3.1
   gal: ^2.3.3
   geocoding: ^5.0.0
+  
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/app_icon.png"
+  # 안드로이드 최신 적응형(Adaptive) 아이콘 설정 (배경색 + 전면 이미지)
+  adaptive_icon_background: "#1E293B" # 아이콘 배경과 어울리는 다크 네이비/블랙 계열
+  adaptive_icon_foreground: "assets/app_icon.png"
 
 dev_dependencies:
   flutter_test:
@@ -57,6 +65,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
